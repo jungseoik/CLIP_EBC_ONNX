@@ -172,3 +172,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+CLIP_EBC_nwpu_rmse.pth
+.gradio
+*.onnx
+*.pth

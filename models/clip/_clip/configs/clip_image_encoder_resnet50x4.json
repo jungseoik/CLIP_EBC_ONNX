@@ -1,0 +1,13 @@
+{
+    "embed_dim": 640,
+    "image_resolution": 288,
+    "vision_layers": [
+        4,
+        6,
+        10,
+        6
+    ],
+    "vision_width": 80,
+    "vision_patch_size": null,
+    "vision_heads": 40
+}

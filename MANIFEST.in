@@ -1,0 +1,13 @@
+include LICENSE
+include README.md
+include requirements.txt
+
+# Include the clip tokenizer vocabulary
+include models/clip/_clip/bpe_simple_vocab_16e6.txt.gz
+
+# Include model configs
+recursive-include models/clip/_clip/configs *.json
+
+# Exclude weights files
+global-exclude *.pth
+global-exclude *.mp4

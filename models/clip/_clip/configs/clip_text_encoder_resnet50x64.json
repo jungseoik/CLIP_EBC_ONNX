@@ -1,0 +1,8 @@
+{
+    "embed_dim": 1024,
+    "context_length": 77,
+    "vocab_size": 49408,
+    "transformer_width": 1024,
+    "transformer_heads": 16,
+    "transformer_layers": 12
+}
