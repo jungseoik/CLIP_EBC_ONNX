@@ -4,9 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ONNX 모델 초기화
-model = ClipEBCOnnx(
-    onnx_model_path="clip_ebc_model.onnx"
-)
+model = ClipEBCOnnx()
 
 def predict_crowd(image):
     """

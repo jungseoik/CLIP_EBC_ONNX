@@ -5,7 +5,7 @@ from custom.clip_ebc_onnx import ClipEBCOnnx
 def parse_args():
     parser = argparse.ArgumentParser(description='CLIP-EBC Crowd Counting (ONNX)')
     parser.add_argument('--image', required=True, help='Path to input image')
-    parser.add_argument('--model', default='clip_ebc_model.onnx', help='Path to ONNX model')
+    parser.add_argument('--model', default='assets/CLIP_EBC_nwpu_rmse_onnx.onnx', help='Path to ONNX model')
     parser.add_argument('--visualize', choices=['density', 'dots', 'all', 'none'], 
                         default='none', help='Visualization type')
     parser.add_argument('--save', action='store_true', 
