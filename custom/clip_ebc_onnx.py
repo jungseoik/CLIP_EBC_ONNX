@@ -12,11 +12,11 @@ import json
 import datetime
 from scipy.ndimage import gaussian_filter
 from sklearn.cluster import KMeans
+import assets
 
 # 프로젝트 루트 디렉토리 설정
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
-
 
 class ClipEBCOnnx:
     """
@@ -27,7 +27,7 @@ class ClipEBCOnnx:
     """
     
     def __init__(self,
-                 onnx_model_path="clip_ebc_model.onnx",
+                 onnx_model_path="assets/CLIP_EBC_nwpu_rmse_onnx.onnx",
                  truncation=4,
                  reduction=8,
                  granularity="fine",
