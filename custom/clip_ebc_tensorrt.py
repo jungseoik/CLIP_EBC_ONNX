@@ -27,7 +27,7 @@ class ClipEBCTensorRT:
     """
     
     def __init__(self,
-                 engine_path="assets/CLIP_EBC_nwpu_rmse_tensorrt.engine",
+                 engine_path="assets/CLIP_EBC_nwpu_rmse_tensorrt.trt",
                  truncation=4,
                  reduction=8,
                  granularity="fine",
@@ -38,7 +38,7 @@ class ClipEBCTensorRT:
                  dataset_name="qnrf",
                  mean=(0.485, 0.456, 0.406),
                  std=(0.229, 0.224, 0.225),
-                 config_dir="configs"):
+                 config_dir ="configs"):
         """CLIPEBC TensorRT 클래스를 설정 매개변수와 함께 초기화합니다."""
         self.engine_path = engine_path
         self.truncation = truncation
@@ -195,50 +195,99 @@ class ClipEBCTensorRT:
         return processed_image
     def _infer_batch(self, batch_input):
         """
-        TensorRT 엔진을 사용하여 배치 추론을 수행합니다.
+        TensorRT 엔진을 사용하여 배치 추론을 수행합니다. (수정 버전)
         """
         import pycuda.driver as cuda
         import pycuda.autoinit
+        import numpy as np
         
         batch_size = batch_input.shape[0]
         
+        # 입력의 형태와 데이터 타입 확인
+        input_shape = (batch_size, 3, self.input_size, self.input_size)
+        print(f"입력 배치 형태: {batch_input.shape}, 데이터 타입: {batch_input.dtype}")
+        
+        # 입력 형태 검증
+        if batch_input.shape != input_shape:
+            print(f"경고: 입력 형태 불일치. 예상: {input_shape}, 실제: {batch_input.shape}")
+            # 필요시 형태 수정
+            batch_input = np.resize(batch_input, input_shape)
+        
+        # 데이터 타입 검증
+        if batch_input.dtype != np.float32:
+            print(f"경고: 입력 데이터 타입 불일치. float32로 변환합니다.")
+            batch_input = batch_input.astype(np.float32)
+        
         # 동적 배치 크기 설정
-        self.context.set_input_shape(self.input_name, (batch_size, 3, self.input_size, self.input_size))
+        self.context.set_input_shape(self.input_name, input_shape)
         
         # 출력 형태 가져오기
         output_shape = self.context.get_tensor_shape(self.output_name)
+        output_shape = tuple(output_shape)  # 튜플로 변환하여 안전성 보장
+        print(f"출력 형태: {output_shape}")
         
-        # 입출력 버퍼 할당
-        d_input = cuda.mem_alloc(batch_input.nbytes)
+        # -1 값을 실제 배치 크기로 대체
+        if output_shape[0] == -1:
+            output_shape = (batch_size,) + output_shape[1:]
+        
+        # 출력 버퍼 준비
         output = np.empty(output_shape, dtype=np.float32)
-        d_output = cuda.mem_alloc(output.nbytes)
         
-        # 입력 데이터를 GPU로 복사
-        cuda.memcpy_htod(d_input, batch_input)
+        # 호스트 메모리 준비 (페이지 잠금 메모리 사용)
+        h_input = cuda.pagelocked_empty(batch_input.shape, dtype=np.float32)
+        h_output = cuda.pagelocked_empty(output_shape, dtype=np.float32)
+        
+        # 입력 데이터 복사
+        np.copyto(h_input, batch_input)
+        
+        # 디바이스 메모리 할당
+        d_input = cuda.mem_alloc(h_input.nbytes)
+        d_output = cuda.mem_alloc(h_output.nbytes)
         
         # CUDA 스트림 생성
         stream = cuda.Stream()
         
-        # 최신 TensorRT API: 텐서 주소 설정
-        self.context.set_tensor_address(self.input_name, int(d_input))
-        self.context.set_tensor_address(self.output_name, int(d_output))
-        
-        # 실행
-        status = self.context.execute_async_v3(stream_handle=stream.handle)
-        if not status:
-            raise RuntimeError("TensorRT 실행 실패")
-        
-        # 동기화
-        stream.synchronize()
-        
-        # 결과를 CPU로 복사
-        cuda.memcpy_dtoh(output, d_output)
-        
-        # 메모리 해제
-        d_input.free()
-        d_output.free()
-        
-        return output
+        try:
+            # 메모리 복사 (호스트 -> 디바이스)
+            cuda.memcpy_htod_async(d_input, h_input, stream)
+            
+            # 텐서 주소 설정
+            self.context.set_tensor_address(self.input_name, int(d_input))
+            self.context.set_tensor_address(self.output_name, int(d_output))
+            
+            # 디버깅 정보 (메모리 주소)
+            print(f"입력 메모리 주소: {int(d_input)}, 출력 메모리 주소: {int(d_output)}")
+            
+            # 실행
+            success = self.context.execute_async_v3(stream_handle=stream.handle)
+            if not success:
+                print("TensorRT 실행 실패")
+                return None
+            
+            # 메모리 복사 (디바이스 -> 호스트)
+            cuda.memcpy_dtoh_async(h_output, d_output, stream)
+            
+            # 스트림 동기화
+            stream.synchronize()
+            
+            # 출력 데이터 복사
+            np.copyto(output, h_output)
+            
+            return output
+            
+        except Exception as e:
+            print(f"TensorRT 추론 중 오류 발생: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
+            
+        finally:
+            # 메모리 해제
+            del stream
+            if 'd_input' in locals():
+                d_input.free()
+            if 'd_output' in locals():
+                d_output.free()
 
     def sliding_window_predict(self, image: np.ndarray, window_size: Union[int, Tuple[int, int]], 
                              stride: Union[int, Tuple[int, int]]) -> np.ndarray:

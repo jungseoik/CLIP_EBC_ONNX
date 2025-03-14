@@ -52,11 +52,11 @@ from custom.clip_ebc_onnx import ClipEBCOnnx
 model_onnx = ClipEBCOnnx()
 results.append(benchmark_model("ONNX", model_onnx, image_path, num_runs))
 
-# 3. TensorRT 모델 테스트
-print("TensorRT 모델 로딩 중...")
-from custom.clip_ebc_tensorrt import ClipEBCTensorRT
-model_tensorrt = ClipEBCTensorRT(engine_path="assets/CLIP_EBC_nwpu_rmse_tensorrt.engine")
-results.append(benchmark_model("TensorRT", model_tensorrt, image_path, num_runs))
+# # 3. TensorRT 모델 테스트
+# print("TensorRT 모델 로딩 중...")
+# from custom.clip_ebc_tensorrt import ClipEBCTensorRT
+# model_tensorrt = ClipEBCTensorRT()
+# results.append(benchmark_model("TensorRT", model_tensorrt, image_path, num_runs))
 
 # 결과 요약 및 비교
 print("\n성능 비교 요약:")

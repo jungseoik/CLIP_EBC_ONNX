@@ -1,90 +1,112 @@
-import os
-import sys
-import torch
 import onnx
-from models import get_model  # 모델 불러오기
+import tensorrt as trt
+import os
 
-# 프로젝트 루트 디렉토리 설정
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(project_root)
+onnx_model_path = "/home/jungseoik/data/PR/CLIP_EBC_ONNX/assets/CLIP_EBC_nwpu_rmse_onnx.onnx"
+engine_path = "/home/jungseoik/data/PR/CLIP_EBC_ONNX/assets/CLIP_EBC_nwpu_rmse_tensorrt.trt"
 
-# 장치 설정
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# 모델 파라미터 설정 (ClipEBC 클래스와 동일하게)
-truncation = 4
-reduction = 8
-granularity = "fine"
-anchor_points_type = "average"
-model_name = "clip_vit_b_16"
-input_size = 224
-window_size = 224
-stride = 224
-prompt_type = "word"
-dataset_name = "qnrf"
-num_vpt = 32
-vpt_drop = 0.0
-deep_vpt = True
-mean = (0.485, 0.456, 0.406)
-std = (0.229, 0.224, 0.225)
-
-# 설정 파일 로드
-config_dir = "configs"
-config_path = os.path.join(config_dir, f"reduction_{reduction}.json")
-with open(config_path, "r") as f:
-    import json
-    config = json.load(f)[str(truncation)][dataset_name]
-
-bins = config["bins"][granularity]
-bins = [(float(b[0]), float(b[1])) for b in bins]
-
-if anchor_points_type == "average":
-    anchor_points = config["anchor_points"][granularity]["average"]
-else:
-    anchor_points = config["anchor_points"][granularity]["middle"]
-anchor_points = [float(p) for p in anchor_points]
-
-# 모델 초기화
-model = get_model(
-    backbone=model_name,
-    input_size=input_size,
-    reduction=reduction,
-    bins=bins,
-    anchor_points=anchor_points,
-    prompt_type=prompt_type,
-    num_vpt=num_vpt,
-    vpt_drop=vpt_drop,
-    deep_vpt=deep_vpt
-)
-
-# 체크포인트 로드
-ckpt_path = "assets/CLIP_EBC_nwpu_rmse.pth"
-ckpt = torch.load(ckpt_path, map_location=device)
-model.load_state_dict(ckpt)
-model = model.to(device)
-model.eval()
-
-# 더미 입력 생성 (동적 배치 크기)
-dummy_input = torch.randn(1, 3, 224, 224).to(device)
-
-# ONNX 변환
-torch.onnx.export(
-    model,                      # 모델
-    dummy_input,                # 더미 입력
-    "clip_ebc_model.onnx",      # 출력 파일 이름
-    export_params=True,         # 모델 파라미터 저장
-    opset_version=17,           # ONNX 버전 (설치된 onnx 1.17.0에 맞게)
-    do_constant_folding=True,   # 상수 폴딩 최적화
-    input_names=['input'],      # 입력 이름
-    output_names=['output'],    # 출력 이름
-    dynamic_axes={
-        'input': {0: 'batch_size'},    # 배치 크기만 동적
-        'output': {0: 'batch_size'}    # 출력도 배치 크기만 동적
-    }
-)
-
-# 모델 검증
-onnx_model = onnx.load("clip_ebc_model.onnx")
+# ONNX 모델 로드 및 체크
+onnx_model = onnx.load(onnx_model_path)
 onnx.checker.check_model(onnx_model)
-print("ONNX 모델이 성공적으로 생성되고 검증되었습니다!")
+print("ONNX 모델이 정상적으로 로드되었습니다.")
 
+# TensorRT 로거 생성
+TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
+
+def build_engine(onnx_file_path):
+    # TensorRT 빌더 생성
+    builder = trt.Builder(TRT_LOGGER)
+    
+    # 명시적 배치 크기 설정으로 네트워크 생성
+    network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+    
+    # ONNX 파서 생성
+    parser = trt.OnnxParser(network, TRT_LOGGER)
+    
+    # ONNX 모델 파싱
+    with open(onnx_file_path, "rb") as model:
+        if not parser.parse(model.read()):
+            print("ERROR: ONNX 모델 파싱 실패")
+            for error in range(parser.num_errors):
+                print(parser.get_error(error))
+            return None
+    
+    # 빌더 설정 생성
+    config = builder.create_builder_config()
+    
+    # 작업 공간 크기 설정 (2GB로 증가)
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 2 << 30)
+    
+    # FP16 정밀도 사용 (성능 향상)
+    if builder.platform_has_fast_fp16:
+        config.set_flag(trt.BuilderFlag.FP16)
+        print("FP16 모드 활성화")
+    
+    # 최적화 프로파일 생성
+    profile = builder.create_optimization_profile()
+    input_name = network.get_input(0).name
+    
+    # 동적 배치 크기 설정
+    min_shape = (1, 3, 224, 224)
+    opt_shape = (4, 3, 224, 224)
+    max_shape = (16, 3, 224, 224)
+    
+    # 최소/최적/최대 형태 설정
+    profile.set_shape(input_name, min_shape, opt_shape, max_shape)
+    config.add_optimization_profile(profile)
+    
+    # 디버깅 정보 출력
+    print(f"Input name: {input_name}")
+    print(f"Input shapes - min: {min_shape}, opt: {opt_shape}, max: {max_shape}")
+    
+    # 네트워크 입출력 정보 출력
+    print("\n=== 네트워크 정보 ===")
+    print(f"입력 개수: {network.num_inputs}")
+    print(f"출력 개수: {network.num_outputs}")
+    for i in range(network.num_inputs):
+        input_tensor = network.get_input(i)
+        print(f"입력 {i}: 이름={input_tensor.name}, 형태={input_tensor.shape}, 데이터 타입={input_tensor.dtype}")
+    for i in range(network.num_outputs):
+        output_tensor = network.get_output(i)
+        print(f"출력 {i}: 이름={output_tensor.name}, 형태={output_tensor.shape}, 데이터 타입={output_tensor.dtype}")
+    
+    # 엔진 빌드
+    print("\n엔진 빌드 중...")
+    serialized_engine = builder.build_serialized_network(network, config)
+    
+    if serialized_engine is None:
+        print("ERROR: TensorRT 엔진 생성 실패")
+        return None
+    
+    # 엔진 역직렬화
+    runtime = trt.Runtime(TRT_LOGGER)
+    engine = runtime.deserialize_cuda_engine(serialized_engine)
+    
+    return engine, serialized_engine
+
+# 엔진 빌드
+engine, serialized_engine = build_engine(onnx_model_path)
+
+if engine:
+    print("TensorRT 엔진 변환 성공!")
+    
+    # 엔진 저장
+    with open(engine_path, "wb") as f:
+        f.write(serialized_engine)
+    
+    print(f"TensorRT 엔진 저장 완료: {engine_path}")
+    
+    # 엔진 정보 출력
+    print("\n=== 생성된 엔진 정보 ===")
+    print(f"엔진에서 I/O 텐서 개수: {engine.num_io_tensors}")
+    
+    for i in range(engine.num_io_tensors):
+        name = engine.get_tensor_name(i)
+        mode = engine.get_tensor_mode(name)
+        shape = engine.get_tensor_shape(name)
+        dtype = engine.get_tensor_dtype(name)
+        
+        mode_str = "입력" if mode == trt.TensorIOMode.INPUT else "출력"
+        print(f"텐서 {i}: 이름={name}, 모드={mode_str}, 형태={shape}, 데이터 타입={dtype}")
+else:
+    print("엔진 생성 실패")

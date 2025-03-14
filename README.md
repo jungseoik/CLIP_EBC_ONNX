@@ -23,6 +23,12 @@ conda activate ebc
 pip install -r requirements.txt
 ```
 
+## Tensorrt Convert
+```bash
+pip install nvidia-tensorrt pycuda
+```
+
+
 ## Gradio
 ```bash
 python app.py

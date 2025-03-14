@@ -177,3 +177,4 @@ CLIP_EBC_nwpu_rmse.pth
 *.onnx
 *.pth
 *.engine
+*.trt
