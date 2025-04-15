@@ -402,6 +402,10 @@ class ClipEBCOnnx:
             
         adjusted_pred_count = int(round(self.count))
         
+        if adjusted_pred_count == 0:
+            print("💡 예측된 군중 수가 0입니다. dot 시각화를 건너뜁니다.")
+            return None, None
+
         fig, ax = plt.subplots(dpi=200, frameon=False)
         ax.imshow(self.processed_image)
         
