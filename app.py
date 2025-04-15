@@ -1,10 +1,12 @@
 import gradio as gr
 from custom.clip_ebc_onnx import ClipEBCOnnx
+from custom.clip_ebc import ClipEBC
+
 import numpy as np
 import matplotlib.pyplot as plt
 
 # ONNX 모델 초기화
-model = ClipEBCOnnx()
+model = ClipEBC()
 
 def predict_crowd(image):
     """
@@ -23,8 +25,11 @@ def predict_crowd(image):
     plt.close(fig_density)  # 메모리 누수 방지
     # 점 시각화
     canvas, dot_map = model.visualize_dots()
-    plt.close(canvas.figure)  
-    
+    if canvas is not None:
+        plt.close(canvas.figure)
+    else:
+        dot_map = np.zeros_like(density_map)
+
     return (
         f"예측된 군중 수: {count:.1f}명",
         density_map,
@@ -56,5 +61,9 @@ with gr.Blocks(title="CLIP-EBC Crowd Counter") as app:
         outputs=[count_text, density_output, dots_output]
     )
 
+# user_name = "piaspace"
+# user_pw = "piaspace@418"
+# auth_pair = [(user_name, user_pw)]
 if __name__ == "__main__":
-    app.launch(share=False)
+    # app.launch(server_name = "0.0.0.0", server_port= 7860,share=False , auth=auth_pair)
+    app.launch(server_name = "0.0.0.0", server_port= 7860,share=False )
