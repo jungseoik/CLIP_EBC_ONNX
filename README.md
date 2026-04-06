@@ -132,8 +132,9 @@ CLIP_EBC_ONNX/
 │   ├── trt/builder.py            #   build_engine() + CLI
 │   ├── pth/model.py              #   ClipEBCPth
 │   └── tests/
-│       ├── test_vram_benchmark.py  # VRAM + 속도 벤치마크
-│       └── test_accuracy.py        # 3백엔드 정확도 비교
+│       ├── test_multichannel_benchmark.py  # 멀티채널 벤치마크 + 마크다운 보고서 생성
+│       ├── test_vram_benchmark.py          # VRAM + 속도 벤치마크
+│       └── test_accuracy.py               # 3백엔드 정확도 비교
 ├── models/                       # CLIP 아키텍처 (PTH 추론 + ONNX 변환용)
 ├── configs/                      # 모델 설정 JSON
 ├── assets/                       # 모델 가중치 + 샘플 (자동 다운로드)
@@ -152,7 +153,30 @@ CLIP_EBC_ONNX/
 
 ## 벤치마크 테스트
 
-GPU 교체 시 성능 확인:
+### 멀티채널 벤치마크 (CCTV 다채널 시뮬레이션)
+
+FHD 해상도에서 ONNX / TRT FP32 / TRT Mixed 3개 백엔드의 채널별 지연시간, 처리량, GPU/CPU 메모리를 측정하고 OOM 한계를 탐색합니다.
+
+```bash
+# 전체 벤치마크 실행 (OOM까지 자동 탐색)
+python -m src.tests.test_multichannel_benchmark
+
+# 마크다운 보고서 자동 생성
+python -m src.tests.test_multichannel_benchmark --markdown result_test.md
+
+# JSON 결과도 저장
+python -m src.tests.test_multichannel_benchmark --markdown result_test.md --save results/benchmark.json
+
+# 특정 백엔드만
+python -m src.tests.test_multichannel_benchmark --models trt_mixed
+
+# 채널 수 직접 지정
+python -m src.tests.test_multichannel_benchmark --channels 1 4 16 64 256
+```
+
+> 상세 가이드: [docs/benchmark_guide.md](docs/benchmark_guide.md)
+
+### 기타 테스트
 
 ```bash
 # VRAM 한계 + 배치별 속도
@@ -166,4 +190,5 @@ python -m src.tests.test_accuracy
 
 - [TRT FP32 가이드](docs/trt_tutorial.md)
 - [TRT Mixed Precision 가이드](docs/trt_mixed_tutorial.md)
+- [멀티채널 벤치마크 가이드](docs/benchmark_guide.md)
 - [ONNX 추론 튜토리얼 (Jupyter)](notebooks/tutorial_onnx.ipynb)
