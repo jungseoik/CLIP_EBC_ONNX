@@ -3,9 +3,23 @@
 [Original Repo](https://github.com/Yiming-M/CLIP-EBC) 기반 군중 계수 추론 파이프라인.
 ONNX, TensorRT FP32, TensorRT Mixed Precision, PyTorch 4개 백엔드를 통일된 인터페이스로 제공.
 
+## 테스트 환경
+
+| 항목 | 내용 |
+|---|---|
+| OS | Ubuntu 24.04.1 LTS (Kernel 6.8.0-41) |
+| GPU | NVIDIA RTX PRO 6000 Blackwell Max-Q (96 GB VRAM) |
+| Driver | 580.82.07 |
+| CUDA | 13.0 |
+| Python | 3.12.4 |
+| PyTorch | 2.11.0+cu130 |
+| ONNX Runtime | 1.24.4 |
+| TensorRT | 10.16.0.72 |
+
+> 아래 벤치마크 수치는 모두 이 환경에서 측정된 결과입니다. GPU, 드라이버, CUDA 버전이 다르면 수치가 달라질 수 있습니다.
+
 ## 백엔드 비교
 
-> 측정 환경: NVIDIA RTX PRO 6000 (97GB), CUDA 13.0, TensorRT 10.16
 > TRT 엔진은 `max_batch_size=1024`로 빌드한 기준. max_batch를 줄이면 VRAM도 비례 감소.
 
 | 백엔드 | 속도 (ONNX 대비) | VRAM (모델 로드) | 정확도 (count diff) | 모델 크기 |
